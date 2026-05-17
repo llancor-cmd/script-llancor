@@ -8557,6 +8557,7 @@ echo -e "${CYAN}0)${NC} Salir"
 }
 # =========================================================
 # ACTUALIZAR SCRIPT DESDE GITHUB
+# DESCARGA Y GUARDA CON EL MISMO NOMBRE
 # =========================================================
 
 update_script(){
@@ -8654,7 +8655,8 @@ update_script(){
 
     while true; do
 
-        echo
+        clear
+
         echo -e "${YELLOW}========================================${RESET}"
         echo -e "${YELLOW}      SCRIPTS DISPONIBLES GITHUB        ${RESET}"
         echo -e "${YELLOW}========================================${RESET}"
@@ -8667,7 +8669,7 @@ update_script(){
         done
 
         echo
-        echo -e "${CYAN}[0]${YELLOW} Volver"
+        echo -e "${RED}[0]${RESET} Volver"
         echo
 
         read -rp "Seleccione script: " opt
@@ -8689,6 +8691,7 @@ update_script(){
             echo
             echo -e "${RED}Opción inválida.${RESET}"
 
+            sleep 2
             continue
         fi
 
@@ -8697,6 +8700,7 @@ update_script(){
             echo
             echo -e "${RED}Número fuera de rango.${RESET}"
 
+            sleep 2
             continue
         fi
 
@@ -8720,6 +8724,14 @@ update_script(){
     # =====================================================
 
     CURRENT_SCRIPT="$(realpath "$0")"
+
+    SCRIPT_DIR="$(dirname "$CURRENT_SCRIPT")"
+
+    # =====================================================
+    # NUEVO NOMBRE
+    # =====================================================
+
+    NEW_SCRIPT_PATH="$SCRIPT_DIR/$FILE"
 
     TMP_FILE="/tmp/$FILE"
 
@@ -8768,21 +8780,25 @@ update_script(){
     # REEMPLAZAR SCRIPT
     # =====================================================
 
-    mv "$TMP_FILE" "$CURRENT_SCRIPT"
+    mv "$TMP_FILE" "$NEW_SCRIPT_PATH"
 
-    chmod +x "$CURRENT_SCRIPT"
+    chmod +x "$NEW_SCRIPT_PATH"
 
     echo
     echo -e "${GREEN}✔ Script actualizado correctamente${RESET}"
 
+    echo
+    echo -e "${CYAN}Nuevo script:${RESET}"
+    echo -e "${GREEN}$NEW_SCRIPT_PATH${RESET}"
+
     sleep 2
 
     echo
-    echo -e "${CYAN}Reiniciando script...${RESET}"
+    echo -e "${YELLOW}Reiniciando script...${RESET}"
 
     sleep 2
 
-    exec "$CURRENT_SCRIPT"
+    exec "$NEW_SCRIPT_PATH"
 }
 # ========= MENÚ PRINCIPAL =========
 while true; do
@@ -8812,7 +8828,8 @@ echo -e " ${YELLOW}15)${NC} Gestión Fail2Ban (Quita Baneo de SSH)"
 echo -e " ${YELLOW}16)${NC}${CYAN} Limpiar Historial bash ${YELLOW} root@nextcloud ~# ${GREEN}source menu${NC}${YELLOW}"
 echo -e " ${YELLOW}17)${NC}${GREEN} Instalar SUDO + Script ${YELLOW} root@nextcloud ~# ${GREEN}menu${NC}${YELLOW}"
 echo -e " ${YELLOW}↓"
-echo -e " ${YELLOW}18)${NC}${GREEN}Descargar Script desde GITHUB${RESET}"
+echo -e " ${YELLOW}18)${NC}${YELLOW} Descargar Scripts desde GITHUB${RESET}"
+echo -e " ${YELLOW}↓"
 echo -e " ${CYAN}0)${CYAN}${CYAN} [Salir]"
 
   read -rp "> " opc
