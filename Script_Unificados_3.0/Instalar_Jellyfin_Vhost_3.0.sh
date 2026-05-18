@@ -276,7 +276,7 @@ menu() {
         clear
 
         echo -e "${WHITE}===============================================${NC}"
-        echo -e "${CYAN}         Jellyfin Tools - Cesar${NC}"
+        echo -e "${CYAN}         Jellyfin Tools - Instalador${NC}"
         echo -e "${WHITE}===============================================${NC}"
 
         echo -e "${YELLOW}1)${NC} ${WHITE}Instalar Jellyfin${NC}"
