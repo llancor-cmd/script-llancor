@@ -6270,11 +6270,11 @@ nc_info_usuario(){
     pausa
 }
 # =========================================================
-# ACTUALIZAR SCRIPT DESDE GITHUB
-# DESCARGA Y GUARDA CON EL MISMO NOMBRE
+# DESCARGAR SCRIPTS DESDE GITHUB
+# SOLO DESCARGA / SOBRESCRIBE SI EXISTE
 # =========================================================
 
-update_script(){
+download_script(){
 
     echo
     echo -e "${CYAN}Buscando scripts disponibles...${RESET}"
@@ -6434,18 +6434,12 @@ update_script(){
     RAW_URL="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$GITHUB_BRANCH/$GITHUB_PATH/$FILE"
 
     # =====================================================
-    # SCRIPT ACTUAL
+    # RUTA DESTINO
     # =====================================================
 
-    CURRENT_SCRIPT="$(realpath "$0")"
+    CURRENT_DIR="$(pwd)"
 
-    SCRIPT_DIR="$(dirname "$CURRENT_SCRIPT")"
-
-    # =====================================================
-    # NUEVO NOMBRE
-    # =====================================================
-
-    NEW_SCRIPT_PATH="$SCRIPT_DIR/$FILE"
+    DEST_FILE="$CURRENT_DIR/$FILE"
 
     TMP_FILE="/tmp/$FILE"
 
@@ -6479,40 +6473,33 @@ update_script(){
     fi
 
     # =====================================================
-    # BACKUP
+    # SOBRESCRIBIR SI EXISTE
     # =====================================================
 
-    BACKUP_FILE="${CURRENT_SCRIPT}.bak.$(date +%F-%H%M%S)"
+    if [ -f "$DEST_FILE" ]; then
 
-    cp "$CURRENT_SCRIPT" "$BACKUP_FILE"
+        echo
+        echo -e "${YELLOW}El archivo ya existe y será sobrescrito:${RESET}"
+        echo -e "${CYAN}$DEST_FILE${RESET}"
 
-    echo
-    echo -e "${GREEN}✔ Backup creado:${RESET}"
-    echo -e "${YELLOW}$BACKUP_FILE${RESET}"
+    fi
 
     # =====================================================
-    # REEMPLAZAR SCRIPT
+    # MOVER SCRIPT
     # =====================================================
 
-    mv "$TMP_FILE" "$NEW_SCRIPT_PATH"
+    mv -f "$TMP_FILE" "$DEST_FILE"
 
-    chmod +x "$NEW_SCRIPT_PATH"
-
-    echo
-    echo -e "${GREEN}✔ Script actualizado correctamente${RESET}"
+    chmod +x "$DEST_FILE"
 
     echo
-    echo -e "${CYAN}Nuevo script:${RESET}"
-    echo -e "${GREEN}$NEW_SCRIPT_PATH${RESET}"
+    echo -e "${GREEN}✔ Script descargado correctamente${RESET}"
+
+    echo
+    echo -e "${CYAN}Ruta:${RESET}"
+    echo -e "${GREEN}$DEST_FILE${RESET}"
 
     sleep 2
-
-    echo
-    echo -e "${YELLOW}Reiniciando script...${RESET}"
-
-    sleep 2
-
-    exec "$NEW_SCRIPT_PATH"
 }
 # =========================================================
 # MENU
