@@ -3622,6 +3622,7 @@ EOF
     esac
   done
 }
+
 actualizar_php_83(){
 
   echo -e "${CYAN}=== ACTUALIZACIÓN PHP 8.2 → 8.3 (NEXTCLOUD SAFE) ===${NC}"
@@ -3759,392 +3760,6 @@ ajustar_memoria_php(){
 
     pausa
     return
-  done
-}
-# =========================================================
-# CLUSTER PRO SSH
-# =========================================================
-
-# ========= CONFIG =========
-
-MAX_JOBS=10
-LOG_DIR="./logs_cluster"
-
-mkdir -p "$LOG_DIR"
-
-# ========= COLORES =========
-
-RED='\033[1;31m'
-GREEN='\033[1;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[1;34m'
-CYAN='\033[1;36m'
-WHITE='\033[1;37m'
-RESET='\033[0m'
-
-# ========= LIMPIAR HISTORIAL =========
-
-trap 'history -c; : > ~/.bash_history' EXIT
-unset HISTFILE
-
-# =========================================================
-# PARSEAR RANGO
-# =========================================================
-
-parse_rango() {
-
-    local RANGO=$1
-
-    if [[ "$RANGO" == *"-"* ]]; then
-
-        IP_BASE=$(echo "$RANGO" | cut -d'.' -f1-3)
-        INICIO=$(echo "$RANGO" | cut -d'.' -f4 | cut -d'-' -f1)
-        FIN=$(echo "$RANGO" | cut -d'.' -f4 | cut -d'-' -f2)
-
-        for i in $(seq "$INICIO" "$FIN"); do
-            echo "$IP_BASE.$i"
-        done
-
-    else
-
-        echo "$RANGO"
-
-    fi
-}
-
-# =========================================================
-# VERIFICAR HOST
-# =========================================================
-
-check_host() {
-
-    ping -c 1 -W 1 "$1" > /dev/null 2>&1
-
-}
-
-# =========================================================
-# EJECUTAR COMANDO
-# =========================================================
-
-run_command_cluster() {
-
-    read -p "Usuario SSH: " USER
-    read -s -p "Password SSH: " PASS
-    echo
-
-    read -p "Comando: " CMD
-    read -p "Ejecutar como root? (s/n): " ROOT
-
-    echo
-    echo -e "${GREEN}✔ Ejemplo rango: 192.168.0.100-120${RESET}"
-    read -p "IP o rango: " RANGO
-
-    HOSTS=($(parse_rango "$RANGO"))
-
-    TOTAL=${#HOSTS[@]}
-    COMPLETADOS=0
-
-    echo
-    echo -e "${YELLOW}🚀 Ejecutando comando en $TOTAL hosts...${RESET}"
-    echo
-
-    for HOST in "${HOSTS[@]}"; do
-
-        (
-            LOG="$LOG_DIR/$HOST-command.log"
-
-            if check_host "$HOST"; then
-
-                echo "[+] $HOST conectado" > "$LOG"
-
-                if [[ "$ROOT" == "s" ]]; then
-                    REMOTE_CMD="echo '$PASS' | sudo -S $CMD"
-                else
-                    REMOTE_CMD="$CMD"
-                fi
-
-                sshpass -p "$PASS" ssh \
-                    -o StrictHostKeyChecking=no \
-                    -o ConnectTimeout=5 \
-                    -o LogLevel=ERROR \
-                    "$USER@$HOST" "$REMOTE_CMD" >> "$LOG" 2>&1
-
-                echo "[OK] $HOST" >> "$LOG"
-
-            else
-
-                echo "[X] $HOST no responde" > "$LOG"
-
-            fi
-
-            ((COMPLETADOS++))
-
-            PCT=$((COMPLETADOS * 100 / TOTAL))
-
-            echo -ne "\r${CYAN}Progreso:${RESET} $COMPLETADOS/$TOTAL (${GREEN}$PCT%${RESET})"
-
-        ) &
-
-        while [ "$(jobs -r | wc -l)" -ge "$MAX_JOBS" ]; do
-            sleep 0.2
-        done
-
-    done
-
-    wait
-
-    echo
-    echo
-    echo -e "${GREEN}✔ Ejecución terminada${RESET}"
-    echo -e "${YELLOW}📂 Logs:${RESET} $LOG_DIR"
-}
-
-# =========================================================
-# COPIAR ARCHIVO
-# =========================================================
-
-copy_file_cluster() {
-
-    read -p "Usuario SSH: " USER
-    read -s -p "Password SSH: " PASS
-    echo
-
-    read -p "Archivo local: " FILE
-    read -p "Ruta destino remota: " DEST
-
-    echo
-    echo -e "${GREEN}✔ Ejemplo rango: 192.168.0.100-120${RESET}"
-    read -p "IP o rango: " RANGO
-
-    echo
-    echo "Permisos para archivo remoto:"
-    echo
-
-    echo "1) chmod +x"
-    echo "2) chmod u+rw"
-
-    while true; do
-
-        read -p "Opción (1/2): " PERM_OP
-
-        if [[ "$PERM_OP" == "1" || "$PERM_OP" == "2" ]]; then
-            break
-        fi
-
-        echo -e "${RED}Opción inválida${RESET}"
-
-    done
-
-    HOSTS=($(parse_rango "$RANGO"))
-
-    TOTAL=${#HOSTS[@]}
-    COMPLETADOS=0
-
-    echo
-    echo -e "${YELLOW}🚀 Copiando archivo a $TOTAL hosts...${RESET}"
-    echo
-
-    for HOST in "${HOSTS[@]}"; do
-
-        (
-            LOG="$LOG_DIR/$HOST-copy.log"
-
-            if check_host "$HOST"; then
-
-                sshpass -p "$PASS" scp \
-                    -o StrictHostKeyChecking=no \
-                    "$FILE" "$USER@$HOST:$DEST" >> "$LOG" 2>&1
-
-                if [[ "$PERM_OP" == "1" ]]; then
-                    CHMOD_CMD="chmod +x $DEST/$(basename "$FILE")"
-                else
-                    CHMOD_CMD="chmod u+rw $DEST/$(basename "$FILE")"
-                fi
-
-                sshpass -p "$PASS" ssh \
-                    -o StrictHostKeyChecking=no \
-                    "$USER@$HOST" "$CHMOD_CMD" >> "$LOG" 2>&1
-
-                echo "[OK] Archivo copiado en $HOST" >> "$LOG"
-
-            else
-
-                echo "[X] $HOST no responde" > "$LOG"
-
-            fi
-
-            ((COMPLETADOS++))
-
-            PCT=$((COMPLETADOS * 100 / TOTAL))
-
-            echo -ne "\r${CYAN}Progreso:${RESET} $COMPLETADOS/$TOTAL (${GREEN}$PCT%${RESET})"
-
-        ) &
-
-        while [ "$(jobs -r | wc -l)" -ge "$MAX_JOBS" ]; do
-            sleep 0.2
-        done
-
-    done
-
-    wait
-
-    echo
-    echo
-    echo -e "${GREEN}✔ Copia terminada${RESET}"
-}
-
-# =========================================================
-# EJECUTAR SCRIPT REMOTO
-# =========================================================
-
-run_script_cluster() {
-
-    read -p "Usuario SSH: " USER
-    read -s -p "Password SSH: " PASS
-    echo
-
-    read -p "Script local (.sh): " SCRIPT
-
-    echo
-    echo -e "${GREEN}✔ Ejemplo rango: 192.168.0.100-120${RESET}"
-    read -p "IP o rango: " RANGO
-
-    echo
-    echo "Permisos para script remoto:"
-    echo
-
-    echo "1) chmod +x"
-    echo "2) chmod u+rw"
-
-    while true; do
-
-        read -p "Opción (1/2): " PERM_OP
-
-        if [[ "$PERM_OP" == "1" || "$PERM_OP" == "2" ]]; then
-            break
-        fi
-
-        echo -e "${RED}Opción inválida${RESET}"
-
-    done
-
-    HOSTS=($(parse_rango "$RANGO"))
-
-    TOTAL=${#HOSTS[@]}
-    COMPLETADOS=0
-
-    echo
-    echo -e "${YELLOW}🚀 Ejecutando scripts en $TOTAL hosts...${RESET}"
-    echo
-
-    for HOST in "${HOSTS[@]}"; do
-
-        (
-            LOG="$LOG_DIR/$HOST-script.log"
-
-            if check_host "$HOST"; then
-
-                sshpass -p "$PASS" scp \
-                    -o StrictHostKeyChecking=no \
-                    "$SCRIPT" "$USER@$HOST:/tmp/script.sh" > /dev/null 2>&1
-
-                if [[ "$PERM_OP" == "1" ]]; then
-                    CHMOD_CMD="chmod +x /tmp/script.sh"
-                else
-                    CHMOD_CMD="chmod u+rw /tmp/script.sh"
-                fi
-
-                sshpass -p "$PASS" ssh \
-                    -o StrictHostKeyChecking=no \
-                    "$USER@$HOST" \
-                    "$CHMOD_CMD && bash /tmp/script.sh" >> "$LOG" 2>&1
-
-                echo "[OK] Script ejecutado en $HOST" >> "$LOG"
-
-            else
-
-                echo "[X] $HOST no responde" > "$LOG"
-
-            fi
-
-            ((COMPLETADOS++))
-
-            PCT=$((COMPLETADOS * 100 / TOTAL))
-
-            echo -ne "\r${CYAN}Progreso:${RESET} $COMPLETADOS/$TOTAL (${GREEN}$PCT%${RESET})"
-
-        ) &
-
-        while [ "$(jobs -r | wc -l)" -ge "$MAX_JOBS" ]; do
-            sleep 0.2
-        done
-
-    done
-
-    wait
-
-    echo
-    echo
-    echo -e "${GREEN}✔ Scripts ejecutados${RESET}"
-}
-
-# =========================================================
-# MENU
-# =========================================================
-
-while true; do
-
-    clear
-
-    echo -e "${CYAN}╔══════════════════════════════════════════════╗${RESET}"
-    echo -e "${CYAN}║${RESET}${YELLOW}         CLUSTER PRO SSH (PROGRESO)        ${RESET}${CYAN}║${RESET}"
-    echo -e "${CYAN}╚══════════════════════════════════════════════╝${RESET}"
-
-    echo
-    echo -e " ${GREEN}1)${RESET} Ejecutar comando en múltiples hosts"
-    echo -e " ${GREEN}2)${RESET} Copiar archivo a múltiples hosts"
-    echo -e " ${GREEN}3)${RESET} Ejecutar script .sh en múltiples hosts"
-    echo -e " ${RED}0)${RESET} Salir"
-
-    echo
-    echo -e "${BLUE}════════════════════════════════════════════════${RESET}"
-    echo
-
-    read -p "Seleccione una opción: " OPCION
-
-    case $OPCION in
-
-        1)
-            clear
-            echo -e "${YELLOW}=== EJECUTAR COMANDO REMOTO ===${RESET}"
-            echo
-            run_command_cluster
-            echo
-            read -p "Presione ENTER para continuar..."
-            ;;
-
-        2)
-            clear
-            echo -e "${YELLOW}=== COPIAR ARCHIVO ===${RESET}"
-            echo
-            copy_file_cluster
-            echo
-            read -p "Presione ENTER para continuar..."
-            ;;
-
-        3)
-            clear
-            echo -e "${YELLOW}=== EJECUTAR SCRIPT REMOTO ===${RESET}"
-            echo
-            run_script_cluster
-            echo
-            read -p "Presione ENTER para continuar..."
-            ;;
-
-      0) return ;;
-      *) warn "Opción inválida"; pausa ;;
-    esac
   done
 }
 
@@ -4811,6 +4426,451 @@ activar_swap_seleccion() {
 
   swapon "${SWAPS[$IDX]}" && echo "[OK] Swap activado: ${SWAPS[$IDX]}"
 }
+
+# ========= inicio Ejecutar Comando a Varios PC / CLUSTER PRO SSH =========
+# =========================================================
+# MODULO CLUSTER SSH
+# =========================================================
+
+# ========= CONFIG =========
+
+CLUSTER_MAX_JOBS=10
+CLUSTER_LOG_DIR="./logs_cluster"
+
+mkdir -p "$CLUSTER_LOG_DIR"
+
+# =========================================================
+# VERIFICAR DEPENDENCIAS
+# =========================================================
+
+cluster_check_dependencies(){
+
+    if ! command -v sshpass >/dev/null 2>&1; then
+
+        echo
+        echo -e "${RED}❌ sshpass no está instalado${RESET}"
+        echo
+
+        read -p "Instalar sshpass ahora? (s/n): " INSTALL_SSHPASS
+
+        if [[ "$INSTALL_SSHPASS" =~ ^[Ss]$ ]]; then
+
+            if command -v apt >/dev/null 2>&1; then
+                apt update && apt install -y sshpass
+            elif command -v dnf >/dev/null 2>&1; then
+                dnf install -y sshpass
+            elif command -v yum >/dev/null 2>&1; then
+                yum install -y sshpass
+            else
+                echo -e "${RED}No se pudo detectar gestor de paquetes${RESET}"
+                return 1
+            fi
+
+        else
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+# =========================================================
+# PARSEAR RANGO
+# =========================================================
+
+cluster_parse_rango(){
+
+    local RANGO=$1
+
+    if [[ "$RANGO" == *"-"* ]]; then
+
+        local IP_BASE
+        local INICIO
+        local FIN
+
+        IP_BASE=$(echo "$RANGO" | cut -d'.' -f1-3)
+        INICIO=$(echo "$RANGO" | cut -d'.' -f4 | cut -d'-' -f1)
+        FIN=$(echo "$RANGO" | cut -d'.' -f4 | cut -d'-' -f2)
+
+        for i in $(seq "$INICIO" "$FIN"); do
+            echo "$IP_BASE.$i"
+        done
+
+    else
+
+        echo "$RANGO"
+
+    fi
+}
+
+# =========================================================
+# CHECK HOST
+# =========================================================
+
+cluster_check_host(){
+
+    ping -c 1 -W 1 "$1" >/dev/null 2>&1
+
+}
+
+# =========================================================
+# EJECUTAR COMANDO
+# =========================================================
+
+cluster_run_command(){
+
+    cluster_check_dependencies || return
+
+    local USER
+    local PASS
+    local CMD
+    local ROOT
+    local RANGO
+
+    read -p "Usuario SSH: " USER
+    read -s -p "Password SSH: " PASS
+    echo
+
+    read -p "Comando: " CMD
+    read -p "Ejecutar como root? (s/n): " ROOT
+
+    echo
+    echo -e "${GREEN}✔ Ejemplo rango:${RESET} 192.168.0.100-120"
+
+    read -p "IP o rango: " RANGO
+
+    local HOSTS
+    mapfile -t HOSTS < <(cluster_parse_rango "$RANGO")
+
+    local TOTAL=${#HOSTS[@]}
+
+    echo
+    echo -e "${YELLOW}🚀 Ejecutando comando en $TOTAL hosts...${RESET}"
+    echo
+
+    local COUNT=0
+
+    for HOST in "${HOSTS[@]}"; do
+
+        (
+            LOG="$CLUSTER_LOG_DIR/$HOST-command.log"
+
+            if cluster_check_host "$HOST"; then
+
+                echo "[+] $HOST conectado" > "$LOG"
+
+                if [[ "$ROOT" =~ ^[Ss]$ ]]; then
+                    REMOTE_CMD="echo '$PASS' | sudo -S $CMD"
+                else
+                    REMOTE_CMD="$CMD"
+                fi
+
+                sshpass -p "$PASS" ssh \
+                    -o StrictHostKeyChecking=no \
+                    -o UserKnownHostsFile=/dev/null \
+                    -o ConnectTimeout=5 \
+                    -o LogLevel=ERROR \
+                    "$USER@$HOST" "$REMOTE_CMD" >> "$LOG" 2>&1
+
+                echo "[OK] $HOST" >> "$LOG"
+
+            else
+
+                echo "[X] $HOST no responde" > "$LOG"
+
+            fi
+
+        ) &
+
+        ((COUNT++))
+
+        PCT=$((COUNT * 100 / TOTAL))
+
+        echo -ne "\r${CYAN}Progreso:${RESET} $COUNT/$TOTAL (${GREEN}$PCT%${RESET})"
+
+        while [ "$(jobs -r | wc -l)" -ge "$CLUSTER_MAX_JOBS" ]; do
+            sleep 0.2
+        done
+
+    done
+
+    wait
+
+    echo
+    echo
+    echo -e "${GREEN}✔ Ejecución terminada${RESET}"
+    echo -e "${YELLOW}📂 Logs:${RESET} $CLUSTER_LOG_DIR"
+}
+
+# =========================================================
+# COPIAR ARCHIVO
+# =========================================================
+
+cluster_copy_file(){
+
+    cluster_check_dependencies || return
+
+    local USER
+    local PASS
+    local FILE
+    local DEST
+    local RANGO
+    local PERM_OP
+
+    read -p "Usuario SSH: " USER
+    read -s -p "Password SSH: " PASS
+    echo
+
+    read -p "Archivo local: " FILE
+    read -p "Ruta destino remota: " DEST
+
+    echo
+    echo -e "${GREEN}✔ Ejemplo rango:${RESET} 192.168.0.100-120"
+
+    read -p "IP o rango: " RANGO
+
+    echo
+    echo "1) chmod +x"
+    echo "2) chmod u+rw"
+
+    while true; do
+
+        read -p "Opción: " PERM_OP
+
+        [[ "$PERM_OP" == "1" || "$PERM_OP" == "2" ]] && break
+
+        echo -e "${RED}Opción inválida${RESET}"
+
+    done
+
+    local HOSTS
+    mapfile -t HOSTS < <(cluster_parse_rango "$RANGO")
+
+    local TOTAL=${#HOSTS[@]}
+
+    echo
+    echo -e "${YELLOW}🚀 Copiando archivo a $TOTAL hosts...${RESET}"
+    echo
+
+    local COUNT=0
+
+    for HOST in "${HOSTS[@]}"; do
+
+        (
+            LOG="$CLUSTER_LOG_DIR/$HOST-copy.log"
+
+            if cluster_check_host "$HOST"; then
+
+                sshpass -p "$PASS" scp \
+                    -o StrictHostKeyChecking=no \
+                    -o UserKnownHostsFile=/dev/null \
+                    "$FILE" "$USER@$HOST:$DEST" >> "$LOG" 2>&1
+
+                if [[ "$PERM_OP" == "1" ]]; then
+                    CHMOD_CMD="chmod +x $DEST/$(basename "$FILE")"
+                else
+                    CHMOD_CMD="chmod u+rw $DEST/$(basename "$FILE")"
+                fi
+
+                sshpass -p "$PASS" ssh \
+                    -o StrictHostKeyChecking=no \
+                    -o UserKnownHostsFile=/dev/null \
+                    "$USER@$HOST" "$CHMOD_CMD" >> "$LOG" 2>&1
+
+                echo "[OK] Archivo copiado en $HOST" >> "$LOG"
+
+            else
+
+                echo "[X] $HOST no responde" > "$LOG"
+
+            fi
+
+        ) &
+
+        ((COUNT++))
+
+        PCT=$((COUNT * 100 / TOTAL))
+
+        echo -ne "\r${CYAN}Progreso:${RESET} $COUNT/$TOTAL (${GREEN}$PCT%${RESET})"
+
+        while [ "$(jobs -r | wc -l)" -ge "$CLUSTER_MAX_JOBS" ]; do
+            sleep 0.2
+        done
+
+    done
+
+    wait
+
+    echo
+    echo
+    echo -e "${GREEN}✔ Copia terminada${RESET}"
+}
+
+# =========================================================
+# EJECUTAR SCRIPT REMOTO
+# =========================================================
+
+cluster_run_script(){
+
+    cluster_check_dependencies || return
+
+    local USER
+    local PASS
+    local SCRIPT
+    local RANGO
+    local PERM_OP
+
+    read -p "Usuario SSH: " USER
+    read -s -p "Password SSH: " PASS
+    echo
+
+    read -p "Script local (.sh): " SCRIPT
+
+    echo
+    echo -e "${GREEN}✔ Ejemplo rango:${RESET} 192.168.0.100-120"
+
+    read -p "IP o rango: " RANGO
+
+    echo
+    echo "1) chmod +x"
+    echo "2) chmod u+rw"
+
+    while true; do
+
+        read -p "Opción: " PERM_OP
+
+        [[ "$PERM_OP" == "1" || "$PERM_OP" == "2" ]] && break
+
+        echo -e "${RED}Opción inválida${RESET}"
+
+    done
+
+    local HOSTS
+    mapfile -t HOSTS < <(cluster_parse_rango "$RANGO")
+
+    local TOTAL=${#HOSTS[@]}
+
+    echo
+    echo -e "${YELLOW}🚀 Ejecutando scripts en $TOTAL hosts...${RESET}"
+    echo
+
+    local COUNT=0
+
+    for HOST in "${HOSTS[@]}"; do
+
+        (
+            LOG="$CLUSTER_LOG_DIR/$HOST-script.log"
+
+            if cluster_check_host "$HOST"; then
+
+                sshpass -p "$PASS" scp \
+                    -o StrictHostKeyChecking=no \
+                    -o UserKnownHostsFile=/dev/null \
+                    "$SCRIPT" "$USER@$HOST:/tmp/script.sh" >/dev/null 2>&1
+
+                if [[ "$PERM_OP" == "1" ]]; then
+                    CHMOD_CMD="chmod +x /tmp/script.sh"
+                else
+                    CHMOD_CMD="chmod u+rw /tmp/script.sh"
+                fi
+
+                sshpass -p "$PASS" ssh \
+                    -o StrictHostKeyChecking=no \
+                    -o UserKnownHostsFile=/dev/null \
+                    "$USER@$HOST" \
+                    "$CHMOD_CMD && bash /tmp/script.sh" >> "$LOG" 2>&1
+
+                echo "[OK] Script ejecutado en $HOST" >> "$LOG"
+
+            else
+
+                echo "[X] $HOST no responde" > "$LOG"
+
+            fi
+
+        ) &
+
+        ((COUNT++))
+
+        PCT=$((COUNT * 100 / TOTAL))
+
+        echo -ne "\r${CYAN}Progreso:${RESET} $COUNT/$TOTAL (${GREEN}$PCT%${RESET})"
+
+        while [ "$(jobs -r | wc -l)" -ge "$CLUSTER_MAX_JOBS" ]; do
+            sleep 0.2
+        done
+
+    done
+
+    wait
+
+    echo
+    echo
+    echo -e "${GREEN}✔ Scripts ejecutados${RESET}"
+}
+
+# =========================================================
+# MENU CLUSTER SSH
+# =========================================================
+
+cluster_menu(){
+
+    while true; do
+
+        clear
+
+        echo -e "${CYAN}╔══════════════════════════════════════════════╗${RESET}"
+        echo -e "${CYAN}║${RESET}${YELLOW}              CLUSTER SSH                  ${RESET}${CYAN}║${RESET}"
+        echo -e "${CYAN}╚══════════════════════════════════════════════╝${RESET}"
+
+        echo
+        echo -e " ${GREEN}1)${RESET} Ejecutar comando"
+        echo -e " ${GREEN}2)${RESET} Copiar archivo"
+        echo -e " ${GREEN}3)${RESET} Ejecutar script"
+        echo -e " ${RED}0)${RESET} Volver"
+
+        echo
+
+        read -p "Seleccione una opción: " OPCION_CLUSTER
+
+        case "$OPCION_CLUSTER" in
+
+            1)
+                clear
+                cluster_run_command
+                echo
+                read -p "ENTER para continuar..."
+                ;;
+
+            2)
+                clear
+                cluster_copy_file
+                echo
+                read -p "ENTER para continuar..."
+                ;;
+
+            3)
+                clear
+                cluster_run_script
+                echo
+                read -p "ENTER para continuar..."
+                ;;
+
+            0)
+                break
+                ;;
+
+            *)
+                echo
+                echo -e "${RED}❌ Opción inválida${RESET}"
+                sleep 1
+                ;;
+
+        esac
+
+    done
+}
+# ========= fin Ejecutar Comando a Varios PC / CLUSTER PRO SSH =========
 
 # ========= MENÚ SWAP =========
 
@@ -8576,7 +8636,7 @@ echo -e " ${CYAN}0)${CYAN}${CYAN} [Volver al Menu Principal]"
     5) menu_red ;;
     6) menu_instala_utilidades ;;
     7) menu_samba ;;
-    8) run_command_cluster ;;
+    8) cluster_menu ;;
 	9) menu_swap ;;
     10) menu_adminer_webmin ;;
     11) menu_duckdns ;;
