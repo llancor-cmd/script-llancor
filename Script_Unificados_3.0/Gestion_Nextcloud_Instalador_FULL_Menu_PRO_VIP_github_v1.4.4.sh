@@ -4824,10 +4824,10 @@ cluster_menu(){
         echo -e "${CYAN}╚══════════════════════════════════════════════╝${RESET}"
 
         echo
-        echo -e " ${GREEN}1)${RESET} Ejecutar comando"
-        echo -e " ${GREEN}2)${RESET} Copiar archivo"
-        echo -e " ${GREEN}3)${RESET} Ejecutar script"
-        echo -e " ${RED}0)${RESET} Volver"
+        echo -e " ${GREEN}1)${YELLOW} Ejecutar comando en múltiples hosts"
+        echo -e " ${GREEN}2)${YELLOW} Copiar archivo a múltiples hosts"
+        echo -e " ${GREEN}3)${YELLOW} Ejecutar script .sh en múltiples hosts"
+        echo -e " ${RED}0)${CYAN} Volver"
 
         echo
 
