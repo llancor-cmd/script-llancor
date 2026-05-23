@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # =========================================================
-# NEXTCLOUD PRO v5.1 FIXED
 # Debian / Ubuntu / TurnKey Linux
 # =========================================================
 
@@ -13328,7 +13327,7 @@ clear
 
 echo
 echo -e "${CYAN}====================================================${RESET}"
-echo -e "${CYAN}       NEXTCLOUD PRO v8.0 PRO VIP GitHub V1.4.3   ${RESET}"
+echo -e "${CYAN}       NEXTCLOUD PRO v8.0 PRO VIP GitHub V1.4.4   ${RESET}"
 echo -e "${CYAN}====================================================${RESET}"
 echo
 
