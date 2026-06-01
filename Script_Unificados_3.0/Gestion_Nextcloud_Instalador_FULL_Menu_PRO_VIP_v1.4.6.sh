@@ -3308,21 +3308,12 @@ menu_config_nextcloud(){
 read -rp "Nombre del VirtualHost (ej: ejemplo.conf): " vhost
 read -rp "Dominio / ServerName: " dominio
 
-########################################
-# DETECCIÓN DE PUERTOS (solo sugerencia)
-########################################
+puerto_http="80"
+puerto_https="443"
 
-if sudo ss -tulpn | grep -q ':80 '; then
-    puerto_http="80"
-else
-    puerto_http="80"
-fi
-
-if sudo ss -tulpn | grep -q ':443 '; then
-    puerto_https="443"
-else
-    puerto_https="443"
-fi
+crear_http=false
+crear_https=false
+forzar_https=false
 
 ########################################
 # PROTOCOLO
@@ -3330,8 +3321,8 @@ fi
 
 echo
 echo "Protocolo del VirtualHost:"
-echo "1) HTTP (:$puerto_http)"
-echo "2) HTTPS (:$puerto_https)"
+echo "1) HTTP (:80)"
+echo "2) HTTPS (:443)"
 echo "3) HTTP + HTTPS"
 echo "4) Manual (ingresar puertos personalizados)"
 echo "0) Volver"
@@ -3355,15 +3346,11 @@ case "$proto_vhost" in
         crear_https=true
     ;;
     4)
-        echo
-        read -rp "Puerto HTTP personalizado [8080]: " puerto_http_manual
-        puerto_http_manual="${puerto_http_manual:-8080}"
+        read -rp "Puerto HTTP personalizado [8080]: " puerto_http
+        puerto_http="${puerto_http:-8080}"
 
-        read -rp "Puerto HTTPS personalizado [4443]: " puerto_https_manual
-        puerto_https_manual="${puerto_https_manual:-4443}"
-
-        puerto_http="$puerto_http_manual"
-        puerto_https="$puerto_https_manual"
+        read -rp "Puerto HTTPS personalizado [4443]: " puerto_https
+        puerto_https="${puerto_https:-4443}"
 
         crear_http=true
         crear_https=true
@@ -3376,7 +3363,38 @@ case "$proto_vhost" in
 esac
 
 ########################################
-# CERTIFICADOS SSL
+# REDIRECCIÓN HTTPS
+########################################
+
+if [ "$crear_http" = true ] && [ "$crear_https" = true ]; then
+    echo
+    echo "¿Forzar redirección HTTP → HTTPS?"
+    echo "1) Sí"
+    echo "2) No"
+    echo "0) Volver"
+
+    read -rp "> " redir_https
+
+    case "$redir_https" in
+        1)
+            forzar_https=true
+        ;;
+        2)
+            forzar_https=false
+        ;;
+        0)
+            continue
+        ;;
+        *)
+            warn "Opción inválida"
+            pausa
+            continue
+        ;;
+    esac
+fi
+
+########################################
+# SSL
 ########################################
 
 cert_file=""
@@ -3449,6 +3467,15 @@ case "$tipo" in
     sudo chown -R "$USER_WEB:$USER_WEB" "$docroot"
 
     if [ "$crear_http" = true ]; then
+        if [ "$forzar_https" = true ]; then
+conf+="
+<VirtualHost *:$puerto_http>
+    ServerName $dominio
+    Redirect permanent / https://$dominio/
+</VirtualHost>
+
+"
+        else
 conf+="
 <VirtualHost *:$puerto_http>
     ServerName $dominio
@@ -3458,12 +3485,10 @@ conf+="
         AllowOverride All
         Require all granted
     </Directory>
-
-    ErrorLog \${APACHE_LOG_DIR}/${dominio}-error.log
-    CustomLog \${APACHE_LOG_DIR}/${dominio}-access.log combined
 </VirtualHost>
 
 "
+        fi
     fi
 
     if [ "$crear_https" = true ]; then
@@ -3482,9 +3507,6 @@ conf+="
         AllowOverride All
         Require all granted
     </Directory>
-
-    ErrorLog \${APACHE_LOG_DIR}/${dominio}-ssl-error.log
-    CustomLog \${APACHE_LOG_DIR}/${dominio}-ssl-access.log combined
 </VirtualHost>
 
 "
@@ -3531,21 +3553,25 @@ conf+="
     sudo a2enmod proxy proxy_http proxy_ssl headers rewrite >/dev/null 2>&1
 
     if [ "$crear_http" = true ]; then
+        if [ "$forzar_https" = true ]; then
 conf+="
 <VirtualHost *:$puerto_http>
     ServerName $dominio
-
-    ProxyPreserveHost On
-    ProxyRequests Off
-
-    ProxyPass / ${backend_proto}://$backend_ip:$backend_port/
-    ProxyPassReverse / ${backend_proto}://$backend_ip:$backend_port/
-
-    ErrorLog \${APACHE_LOG_DIR}/${dominio}-proxy-error.log
-    CustomLog \${APACHE_LOG_DIR}/${dominio}-proxy-access.log combined
+    Redirect permanent / https://$dominio/
 </VirtualHost>
 
 "
+        else
+conf+="
+<VirtualHost *:$puerto_http>
+    ServerName $dominio
+    ProxyPreserveHost On
+    ProxyPass / ${backend_proto}://$backend_ip:$backend_port/
+    ProxyPassReverse / ${backend_proto}://$backend_ip:$backend_port/
+</VirtualHost>
+
+"
+        fi
     fi
 
     if [ "$crear_https" = true ]; then
@@ -3560,13 +3586,8 @@ conf+="
     SSLCertificateKeyFile $cert_key
 
     ProxyPreserveHost On
-    ProxyRequests Off
-
     ProxyPass / ${backend_proto}://$backend_ip:$backend_port/
     ProxyPassReverse / ${backend_proto}://$backend_ip:$backend_port/
-
-    ErrorLog \${APACHE_LOG_DIR}/${dominio}-proxy-ssl-error.log
-    CustomLog \${APACHE_LOG_DIR}/${dominio}-proxy-ssl-access.log combined
 </VirtualHost>
 
 "
@@ -3581,7 +3602,6 @@ conf+="
     read -rp "Ruta real del directorio: " docroot
     read -rp "Alias (ej: /zabbix): " alias
 
-    if [ "$crear_http" = true ]; then
 conf+="
 <VirtualHost *:$puerto_http>
     ServerName $dominio
@@ -3592,44 +3612,13 @@ conf+="
         AllowOverride All
         Require all granted
     </Directory>
-
-    ErrorLog \${APACHE_LOG_DIR}/${dominio}-alias-error.log
-    CustomLog \${APACHE_LOG_DIR}/${dominio}-alias-access.log combined
 </VirtualHost>
-
 "
-    fi
-
-    if [ "$crear_https" = true ]; then
-        sudo a2enmod ssl >/dev/null 2>&1
-
-conf+="
-<VirtualHost *:$puerto_https>
-    ServerName $dominio
-
-    SSLEngine on
-    SSLCertificateFile $cert_file
-    SSLCertificateKeyFile $cert_key
-
-    Alias $alias $docroot
-
-    <Directory $docroot>
-        AllowOverride All
-        Require all granted
-    </Directory>
-
-    ErrorLog \${APACHE_LOG_DIR}/${dominio}-alias-ssl-error.log
-    CustomLog \${APACHE_LOG_DIR}/${dominio}-alias-ssl-access.log combined
-</VirtualHost>
-
-"
-    fi
 ;;
 
 0)
 continue
 ;;
-
 *)
 warn "Opción inválida"
 pausa
@@ -3643,11 +3632,6 @@ sudo a2ensite "$vhost" >/dev/null 2>&1
 if sudo apachectl configtest; then
     sudo systemctl reload apache2
     ok "VirtualHost creado correctamente."
-
-    echo
-    echo "Dominio: $dominio"
-    [ "$crear_http" = true ] && echo "HTTP : $puerto_http"
-    [ "$crear_https" = true ] && echo "HTTPS: $puerto_https"
 else
     warn "Error en configuración Apache"
     sudo apachectl configtest
@@ -3655,8 +3639,6 @@ fi
 
 pausa
 ;;
-
-
 
 # Crear Vhost #
       8)
